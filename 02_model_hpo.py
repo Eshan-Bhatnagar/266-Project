@@ -19,7 +19,7 @@ from gensim.models import Word2Vec
 from gensim.utils import simple_preprocess
 
 # Bert
-from transformers import BertTokenizer, BertModel, get_linear_schedule_with_warmup
+from transformers import AutoTokenizer, AutoModel, get_linear_schedule_with_warmup
 from torch.utils.data import Dataset, DataLoader
 
 # Admin
@@ -50,7 +50,8 @@ from sklearn.calibration import calibration_curve
 
 # Custom modules
 from global_vars import GVD, FPATH
-from project_utils import CustomDataset, CNNForWord2Vec
+from project_utils import CustomDataset, BERT, BERTweet, ALBERT, CNNForWord2VecBERT, CNNForWord2VecBERTFT, CNNForWord2VecBERTweet, CNNForWord2VecBERTweetFT, CNNForWord2VecALBERT, CNNForWord2VecALBERTFT
+
 
 
 """ 
@@ -59,15 +60,44 @@ from project_utils import CustomDataset, CNNForWord2Vec
 
 # Load w2v embeddings and bert embedding
 word2vec_embeddings = torch.load(FPATH + 'word2vec_embeddings.pt')
-bert_embeddings = FPATH + GVD['bert_embeddings']
+# bert_embeddings = FPATH + GVD['bert_embeddings']
 
 
 """
 2/4 Instantiate objective function
 """
+project_dict = [
+  {'MODEL':BERT, 'NAME':'CNNForBERT', 'W2V': False, 'FINETUNING':False, 'BASELINE': True, 'CONFIG':'bert-base-uncased'},
+  {'MODEL':CNNForWord2VecBERT, 'NAME':'CNNForWord2VecBERT', 'W2V': True, 'FINETUNING':False, 'BASELINE': False, 'CONFIG':'bert-base-uncased'},
+  {'MODEL':CNNForWord2VecBERTFT, 'NAME':'CNNForWord2VecBERTFT', 'W2V': True, 'FINETUNING':True, 'BASELINE': False, 'CONFIG':'bert-base-uncased'},
+  {'MODEL':BERTweet, 'NAME':'CNNForBERTweet', 'W2V': False, 'FINETUNING':False, 'BASELINE': True, 'CONFIG':'vinai/bertweet-base'},
+  {'MODEL':CNNForWord2VecBERTweet, 'NAME':'CNNForWord2VecBERTweet', 'W2V': True, 'FINETUNING':False, 'BASELINE': False, 'CONFIG':'vinai/bertweet-base'},
+  {'MODEL':CNNForWord2VecBERTweetFT, 'NAME':'CNNForWord2VecBERTweetFT', 'W2V': True, 'FINETUNING':True, 'BASELINE': False, 'CONFIG':'vinai/bertweet-base'},
+  {'MODEL':ALBERT, 'NAME':'CNNForALBERT', 'W2V': False, 'FINETUNING':False, 'BASELINE': True, 'CONFIG':'albert/albert-base-v2'},
+  {'MODEL':CNNForWord2VecALBERT, 'NAME':'CNNForWord2VecALBERT', 'W2V': True, 'FINETUNING':False, 'BASELINE': False, 'CONFIG':'albert/albert-base-v2'},
+  {'MODEL':CNNForWord2VecALBERTFT, 'NAME':'CNNForWord2VecALBERTFT', 'W2V': True, 'FINETUNING':True, 'BASELINE': False, 'CONFIG':'albert/albert-base-v2'}
+]
 
+# Function to calculate metrics
+def calculate_metrics(targets, outputs):
+    accuracy = accuracy_score(targets, outputs)
+    precision = precision_score(targets, outputs)
+    recall = recall_score(targets, outputs)
+    f1 = f1_score(targets, outputs)
+    precision_vals, recall_vals, _ = precision_recall_curve(targets, outputs)
+    pr_auc = auc(recall_vals, precision_vals)
+    roc_auc = roc_auc_score(targets, outputs)
+    return accuracy, precision, recall, f1, pr_auc, roc_auc
 
-def objective(trial):
+def objective(**kwargs):
+
+  # Instantiate model and model conditions
+  NAME = kwargs['NAME']
+  MODEL = kwargs['MODEL']
+  W2V = kwargs['W2V']
+  FINETUNING = kwargs['FINETUNING']
+  BASELINE = kwargs['BASELINE']
+  CONFIG = kwargs['CONFIG']
 
   parameters = {
       'batch_size': trial.suggest_int('batch_size', 2, 4),
@@ -95,32 +125,75 @@ def objective(trial):
   freeze_bert = parameters['freeze_bert']
   hidden_dim = parameters['hidden_dim']
 
-  # Define the parameters
-  train_params = {'batch_size': batch_size,'shuffle': True}
-  filter_sizes = [3, 4, 5] # We should add it to the Parameters
-  num_filters = 100  # We should add it to the Parameters
-  embedding_dim = 768
-  vocab_size = len(word2vec_model.wv.index_to_key)
 
-  # Instantiate the dataset with the BERT tokenizer and embeddings
-  bert_model = BertModel.from_pretrained('bert-base-uncased')
-  tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+ # Instantiate the dataset with the BERT tokenizer and embeddings
+  bert_model = AutoModel.from_pretrained(CONFIG)
+  tokenizer = AutoTokenizer.from_pretrained(CONFIG)
 
   # Ensure bert_model is in eval mode and move to GPU if available
   bert_model.eval()
   if torch.cuda.is_available():
       bert_model = bert_model.to('cuda')
 
-  # Pass train and test to dataloader
-  training_set = CustomDataset(train_df, tokenizer, max_len, bert_model) # Move the Data rows outside the DataCustom
-  val_set = CustomDataset(val_df, tokenizer, max_len, bert_model)  # Move the Data rows outside the DataCustom
+  # Instantiate w2v model
+  if W2V:
+    WORD2VEC_MODEL = Word2Vec.load(FPATH + 'word2vec_model.model')
+  else:
+    WORD2VEC_MODEL = None
 
+  # Define the parameters
+  train_params = {'batch_size': batch_size,'shuffle': True}
+  filter_sizes = [3, 4, 5] # We should add it to the Parameters
+  num_filters = 100  # We should add it to the Parameters
+  embedding_dim = 768
+  vocab_size = len(WORD2VEC_MODEL.wv.index_to_key)
+
+  # Instantiate dataframes for train and validation
+  train_df = pd.read_csv(FPATH + 'train_df.csv')
+  val_df = pd.read_csv(FPATH + 'val_df.csv')
+
+  # Instantiate the CNN hyperparameters
+  filter_sizes = [3, 4, 5]
+  num_filters = 100
+  embedding_dim = 768
+
+  # Pass train and test to dataloader
+  if W2V:
+    training_set = CustomDataset(train_df, tokenizer, WORD2VEC_MODEL, max_len) # Move the Data rows outside the DataCustom
+    val_set = CustomDataset(val_df, tokenizer, WORD2VEC_MODEL, max_len)  # Move the Data rows outside the DataCustom
+  else:
+    training_set = CustomDataset(train_df, tokenizer, max_len)
+    val_set = CustomDataset(val_df, tokenizer, max_len)
   # Create the dataloaders
   training_loader = DataLoader(training_set, **train_params)
   val_loader = DataLoader(val_set, **train_params)
 
-  # Instantiate model
-  model = CNNForWord2Vec(vocab_size, embedding_dim, num_filters, filter_sizes, dropout_rate, hidden_dim, freeze_bert=freeze_bert)
+# Instantiate model
+  if W2V:
+    vocab_size = len(WORD2VEC_MODEL.wv.index_to_key)
+    word2vec_weights = WORD2VEC_MODEL.wv.vectors
+    if FINETUNING:
+      hidden_dim = hidden_dim
+      freeze = True
+      model = MODEL(embedding_dim=embedding_dim, 
+                    num_filters=num_filters,
+                    filter_sizes=filter_sizes,
+                    dropout_rate=dropout_rate,
+                    hidden_dim=hidden_dim,
+                    vocab_size=vocab_size,
+                    word2vec_weights=word2vec_weights,
+                    freeze=freeze)
+    else:
+      hidden_dim = None
+      freeze = None
+      model = MODEL(embedding_dim=embedding_dim, 
+                    num_filters=num_filters,
+                    filter_sizes=filter_sizes,
+                    dropout_rate=dropout_rate,
+                    vocab_size=vocab_size,
+                    word2vec_weights=word2vec_weights)
+  else:
+    model = MODEL()
 
   # Move the model to the GPU
   if torch.cuda.is_available():
@@ -151,6 +224,9 @@ def objective(trial):
   # Define threshold
   threshold = 0.5
 
+  # Expand number of steps back before taking average loss
+  accumulation_steps = 3
+
   # Training loop with metrics calculation
   for epoch in range(epochs):
       model.train()
@@ -165,16 +241,24 @@ def objective(trial):
       total_train_iterations = len(training_loader)
       total_loss = 0
       for i, data in tqdm(enumerate(training_loader,0),total=total_train_iterations, desc="Training"):
-          word_indices = data['word_indices'].to(bert_model.device)
-          bert_inputs = {key: value.to('cuda') for key, value in data['bert_inputs'].items()}
+          input_ids = data['input_ids'].to(bert_model.device)
+          attention_mask = data['attention_mask'].to(bert_model.device)
           targets = data['targets'].to(bert_model.device)
 
           # Forward pass
-          outputs = model(word_indices, bert_inputs)
-          optimizer.zero_grad()
+          if W2V:
+            word_indices = data['word_indices'].to(bert_model.device)
+            outputs = model(input_ids, attention_mask, word_indices)
+          else:
+            outputs = model(input_ids, attention_mask)
+          
+          # Get loss
           loss = loss_function(outputs, targets.unsqueeze(1))
           loss.backward()
-          optimizer.step()
+          if (i + 1) % accumulation_steps == 0:  
+              optimizer.step()  
+              optimizer.zero_grad()
+
           train_targets.extend(targets.cpu().detach().numpy().tolist())
           train_outputs.extend(torch.sigmoid(outputs).cpu().detach().numpy().tolist())
 
@@ -287,4 +371,6 @@ with open(GVD['optuna_study_w2v_bert'], 'wb') as f:
 
 print('Done!')
 
-
+# Run function
+for project in project_dict:
+  objective(**project)
