@@ -6,7 +6,7 @@ DISCLAIMER
 The project files (below) were created and executed in google colab, which involved connecting Drive directories. This practice made it difficult to generalize the import statements to users without access to the designated project directory. File paths in the ipynb files refer to the shared Google Drive folder used for the project.
 
 Moreover, we have omitted the very heavy files, including:
-  - All 9 models (.pth files)
+  - All 9 trained models (.pth files)
   - 8 of the 9 Optuna study objects (saving only the top performer)
   - train_df, val_df and the raw data from which train_df, val_df and test_df were taken
   - Word2Vec model and embeddings, which were concatenated onto the Bert embeddings
