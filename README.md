@@ -47,7 +47,7 @@ optuna_study_CNNForWord2VecBERTweet.pkl
   - This study object contains the study information needed to be able to analysis the results of each trial, including the metrics passed to the study object by the objective function
 
 project_utils.py
-  - This file contains the functions and classes used across the project files
+  - This file contains the functions and classes used across the project files, including the code for all nine models
 
 train_df.csv
   - Dataframe for the training set
