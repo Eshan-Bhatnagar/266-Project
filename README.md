@@ -8,7 +8,7 @@ The project files (below) were created and executed in google colab, which invol
 Moreover, we have omitted the very heavy files, including:
   - All 9 trained models (.pth files)
   - 8 of the 9 Optuna study objects (saving only the top performer)
-  - train_df, val_df and the raw data from which train_df, val_df and test_df were taken
+  - the raw data from which train_df, val_df and test_df were taken
   - Word2Vec model and embeddings, which were concatenated onto the Bert embeddings
 
 FILES
