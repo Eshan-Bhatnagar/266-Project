@@ -37,6 +37,9 @@ FILES
 08_embedding_analysis.ipynb
   - Additional embedding analysis along with code for topic modeling; screenshots from topic modeling results can be found in the Appendix of the write up.
 
+266 Final Project.pdf
+  - PDF copy of presentation slides
+  
 Project Write Up.pdf
   - The final written report summarizing the findings of the project
 
